@@ -1,4 +1,5 @@
 #include "metabiology.h"
+#include "levin.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,8 +29,19 @@ int mutate_prog(const unsigned char *prog, int len, double rate,
     if (out_len == 0) {
         result[out_len++] = (unsigned char)rng_below(rng, N_OPS);
     }
-    if (out_len > 64) out_len = 64;
     return out_len;
+}
+
+bool has_backward_jump(const unsigned char *code, int n) {
+    int i = 0;
+    while (i < n) {
+        int op = code[i] & 15;
+        if ((op == OP_JMP || op == OP_JZ || op == OP_JNZ) && i + 1 < n &&
+            arg_signed(code[i + 1]) <= 0)
+            return true;
+        i += op_has_arg(op) ? 2 : 1;
+    }
+    return false;
 }
 
 int crossover_prog(const unsigned char *a, int alen, const unsigned char *b, int blen,
@@ -46,8 +58,9 @@ int crossover_prog(const unsigned char *a, int alen, const unsigned char *b, int
     return out_len;
 }
 
-double fitness_fn(const VMResult *out, const int *target, int target_len, int plen) {
-    if (!out->ok) return -1.0;
+double fitness_fn(const VMResult *out, const int *target, int target_len, int plen,
+                  bool exact) {
+    if (exact ? out->status != VM_HALT : !out->ok) return -1.0;
     int matches = 0;
     int n = out->len < target_len ? out->len : target_len;
     for (int i = 0; i < n; i++) {
@@ -55,7 +68,20 @@ double fitness_fn(const VMResult *out, const int *target, int target_len, int pl
         else break;
     }
     double score = target_len > 0 ? (double)matches / target_len : 0.0;
+    /* modo exacto: imprimir de más o de menos cuesta medio elemento */
+    if (exact && out->len != target_len) score -= 0.5 / (target_len > 0 ? target_len : 1);
     return score - plen * 0.004;
+}
+
+bool is_solved(const VMResult *out, const int *target, int target_len, bool exact) {
+    if (exact) {
+        if (out->status != VM_HALT || out->len != target_len) return false;
+    } else if (!output_matches_target(out, target, target_len)) {
+        return false;
+    }
+    for (int i = 0; i < target_len; i++)
+        if (out->values[i] != target[i]) return false;
+    return true;
 }
 
 typedef struct {
@@ -86,7 +112,7 @@ MetaResult metabiology(
     const int *target, int target_len,
     int pop_size, int generations, long eval_budget,
     double mutation_rate, double xover_prob, double elite_frac, double inject_frac,
-    Individual *initial_pop, int initial_pop_len,
+    bool exact, Individual *initial_pop, int initial_pop_len,
     bool verbose, Rng *rng
 ) {
     MetaResult mr;
@@ -123,7 +149,7 @@ MetaResult metabiology(
         for (int i = 0; i < pop_size; i++) {
             long steps_used;
             outs[i] = run_vm(pop[i].code, pop[i].len, eval_budget, &steps_used);
-            scored[i].f = fitness_fn(&outs[i], target, target_len, pop[i].len);
+            scored[i].f = fitness_fn(&outs[i], target, target_len, pop[i].len, exact);
             scored[i].idx = i;
         }
         qsort(scored, (size_t)pop_size, sizeof(ScoredIdx), cmp_scored);
@@ -173,13 +199,13 @@ MetaResult metabiology(
             printf("] len=%d div=%.2f\n", gr->best_len, diversity);
         }
 
-        bool solved_now = (match_len == target_len);
-        if (solved_now) {
-            for (int i = 0; i < target_len; i++) {
-                if (gr->best_output[i] != target[i]) { solved_now = false; break; }
-            }
-        }
-        if (solved_now) {
+        if (is_solved(best_out, target, target_len, exact)) {
+            mr.solved = true;
+            memcpy(mr.best_program, pop[best_idx].code, (size_t)pop[best_idx].len);
+            mr.best_program_len = pop[best_idx].len;
+            mr.best_fitness = best_f;
+            mr.best_output_len = best_out->len < MAX_OUT ? best_out->len : MAX_OUT;
+            memcpy(mr.best_output, best_out->values, (size_t)mr.best_output_len * sizeof(int));
             if (verbose) printf("Solved at generation %d\n", gen);
             break;
         }
@@ -221,13 +247,6 @@ MetaResult metabiology(
         memcpy(pop, new_pop, sizeof(Individual) * (size_t)pop_size);
     }
 
-    mr.solved = false;
-    if (mr.has_best_program && mr.best_output_len >= target_len) {
-        mr.solved = true;
-        for (int i = 0; i < target_len; i++) {
-            if (mr.best_output[i] != target[i]) { mr.solved = false; break; }
-        }
-    }
     mr.history = history;
     mr.history_len = history_len;
     mr.wall_time = (double)(clock() - t0) / CLOCKS_PER_SEC;
