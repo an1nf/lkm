@@ -1,4 +1,4 @@
-# lkm — Levin, Kolmogorov, metabiología y autorreferencia
+# lkm
 
 Implementación en C de la búsqueda universal de Levin, cotas de complejidad de
 Kolmogorov, metabiología (evolución de programas al estilo de Chaitin) y
@@ -6,7 +6,7 @@ Kolmogorov, metabiología (evolución de programas al estilo de Chaitin) y
 de 16 opcodes.
 
 
-## Compilar y ejecutar
+## Compilar
 
 ```sh
 make            # requiere gcc con OpenMP (gcc estándar en Linux)
