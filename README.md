@@ -5,6 +5,8 @@ Kolmogorov, metabiología (evolución de programas al estilo de Chaitin) y
 **autorreferencia** (quines, autoinspección) sobre una máquina virtual de pila
 de 16 opcodes.
 
+![Mapa de parada](figures/halting_map.png)
+
 
 ## Compilar
 
@@ -15,20 +17,6 @@ make            # requiere gcc con OpenMP (gcc estándar en Linux)
 make test       # búsqueda perezosa vs fuerza bruta, y quine manual
 make figures    # figuras en figures/ (requiere numpy y matplotlib)
 ```
-
-## Figuras
-
-### Mapa de parada
-
-![Mapa de parada](figures/halting_map.png)
-
-Cada píxel es un programa de 6 símbolos (16^6 = 16 777 216 en total) y su
-color indica cómo termina con un presupuesto de 256 pasos. Las columnas codifican los símbolos en posiciones pares (0, 2, 4) y las filas
-los de posiciones impares (1, 3, 5), del más al menos significativo. Así, el
-primer par de símbolos elige un bloque, el segundo un sub-bloque, etc.: fijar
-un prefijo es hacer zoom.
-
-
 
 ## Máquina virtual
 
